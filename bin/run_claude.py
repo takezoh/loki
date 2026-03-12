@@ -61,6 +61,9 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
 
     repo = Path(repo_path)
 
+    model_key = f"FORGE_MODEL_{phase.upper()}"
+    model = env.get(model_key, env["FORGE_MODEL"])
+
     if phase == "planning":
         budget = env["FORGE_BUDGET_PLANNING"]
         work_dir = repo
@@ -99,7 +102,7 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
                     "claude", "--print",
                     "--no-session-persistence",
                     "--max-budget-usd", budget,
-                    "--model", env["FORGE_MODEL"],
+                    "--model", model,
                     "--permission-mode", "bypassPermissions",
                     "-p", prompt,
                 ],
