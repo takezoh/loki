@@ -12,7 +12,7 @@ from pathlib import Path
 FORGE_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(FORGE_ROOT / "bin"))
 
-from poll import load_env, poll, fetch_sub_issues
+from poll import load_env, poll, fetch_sub_issues, update_issue_state
 
 def load_repos() -> dict[str, str]:
     repos = {}
@@ -137,8 +137,8 @@ def main():
                 continue
 
             ready = [s for s in sub_issues if s.get("ready")]
-            done = [s for s in sub_issues if s.get("state") in ("In Review", "Done")]
-            log(f"  {parent_identifier}: {len(sub_issues)} sub-issues, {len(ready)} ready, {len(done)} done/in-review")
+            done = [s for s in sub_issues if s.get("state") in ("Done", "In Review")]
+            log(f"  {parent_identifier}: {len(sub_issues)} sub-issues, {len(ready)} ready, {len(done)} done")
 
             for sub in ready:
                 sub_issue = {
@@ -149,6 +149,7 @@ def main():
                 }
                 p = dispatch_issue("implementing", sub_issue, lock_dir, max_concurrent, repos, parent_id=parent_id)
                 if p:
+                    update_issue_state(sub["id"], "In Progress")
                     processes.append(p)
 
     for p in processes:

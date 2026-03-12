@@ -108,7 +108,7 @@ Execute all of the following yourself:
    Details: {link to sub-issue identifier}
    ```
 6. **Update status**:
-   - Use `save_issue` to change sub-issue status to "In Review"
+   - Use `save_issue` to change sub-issue status to "Done"
 
 ### On Error
 

@@ -122,7 +122,39 @@ query($parentId: String!) {
 }
 """
 
-TERMINAL_STATES = {"In Review", "Done", "Cancelled", "Failed"}
+TERMINAL_STATES = {"In Progress", "In Review", "Done", "Cancelled", "Failed"}
+
+
+UPDATE_STATE_MUTATION = """
+mutation($issueId: String!, $stateId: String!) {
+  issueUpdate(id: $issueId, input: { stateId: $stateId }) {
+    issue { id state { name } }
+  }
+}
+"""
+
+WORKFLOW_STATES_QUERY = """
+query($teamId: ID!) {
+  workflowStates(filter: { team: { id: { eq: $teamId } } }) {
+    nodes { id name }
+  }
+}
+"""
+
+
+def update_issue_state(issue_id: str, state_name: str):
+    env = load_env()
+    api_key = env.get("LINEAR_API_KEY") or os.environ.get("LINEAR_API_KEY", "")
+    team_id = env["FORGE_TEAM_ID"]
+
+    data = graphql(api_key, WORKFLOW_STATES_QUERY, {"teamId": team_id})
+    states = data.get("data", {}).get("workflowStates", {}).get("nodes", [])
+    state_id = next((s["id"] for s in states if s["name"] == state_name), None)
+    if not state_id:
+        print(f"State '{state_name}' not found", file=sys.stderr)
+        return
+
+    graphql(api_key, UPDATE_STATE_MUTATION, {"issueId": issue_id, "stateId": state_id})
 
 
 def is_ready(node: dict) -> bool:
