@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Issue 単位で claude CLI を実行する。"""
 
+import json
 import os
 import subprocess
 import sys
@@ -8,6 +9,49 @@ from datetime import datetime
 from pathlib import Path
 
 FORGE_ROOT = Path(__file__).resolve().parent.parent
+
+SANDBOX_SETTINGS = {
+    "sandbox": {
+        "enabled": True,
+        "autoAllowBashIfSandboxed": True,
+        "allowUnsandboxedCommands": False,
+        "filesystem": {
+            "denyRead": ["~/.ssh", "~/.aws", "~/.gnupg"],
+            "denyWrite": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.bashrc", "~/.zshrc"],
+        },
+        "network": {
+            "allowManagedDomainsOnly": True,
+            "allowedDomains": [
+                "api.linear.app",
+                "github.com",
+                "*.github.com",
+                "*.githubusercontent.com",
+                "api.anthropic.com",
+            ],
+        },
+    },
+    "permissions": {
+        "deny": [
+            "Bash(rm -rf /)",
+            "Bash(git push * --force *)",
+            "Bash(git push * -f *)",
+        ],
+    },
+}
+
+
+def setup_sandbox(work_dir: Path, log_dir: Path, extra_write_paths: list[str] | None = None):
+    settings = json.loads(json.dumps(SANDBOX_SETTINGS))
+    allow_write = [str(log_dir)]
+    if extra_write_paths:
+        allow_write.extend(extra_write_paths)
+    settings["sandbox"]["filesystem"]["allowWrite"] = allow_write
+
+    claude_dir = work_dir / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    settings_file = claude_dir / "settings.local.json"
+    settings_file.write_text(json.dumps(settings, indent=2))
+
 
 def load_env():
     env = {}
@@ -19,23 +63,6 @@ def load_env():
             k, _, v = line.partition("=")
             env[k] = v.strip('"').strip("'")
     return env
-
-def sandbox_cmd(cmd: list[str], work_dir: Path, repo: Path) -> list[str]:
-    home = Path.home()
-    writable = [
-        str(work_dir),
-        str(repo / ".git"),
-        "/tmp",
-        str(home / ".claude"),
-        str(home / ".config"),
-        str(home / ".cache"),
-    ]
-    args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"]
-    for d in writable:
-        if Path(d).exists():
-            args += ["--bind", d, d]
-    args += ["--die-with-parent", "--"]
-    return args + cmd
 
 
 def mark_failed(env: dict, issue_id: str, log_file: Path):
@@ -114,19 +141,18 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
         run_env = {**os.environ}
         run_env.pop("CLAUDECODE", None)
 
-        claude_cmd = [
-            "claude", "--print",
-            "--no-session-persistence",
-            "--max-budget-usd", budget,
-            "--model", model,
-            "--permission-mode", "bypassPermissions",
-            "-p", prompt,
-        ]
-        cmd = sandbox_cmd(claude_cmd, work_dir, repo)
+        setup_sandbox(work_dir, log_dir)
 
         with open(log_file, "w") as log:
             ret = subprocess.run(
-                cmd,
+                [
+                    "claude", "--print",
+                    "--no-session-persistence",
+                    "--max-budget-usd", budget,
+                    "--model", model,
+                    "--dangerously-skip-permissions",
+                    "-p", prompt,
+                ],
                 stdout=log, stderr=subprocess.STDOUT,
                 cwd=work_dir, env=run_env,
             )
