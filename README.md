@@ -58,6 +58,9 @@ sudo apt-get install bubblewrap socat
    claude mcp add -s user linear-server -- npx -y @anthropic-ai/linear-mcp-server
    ```
 
+6. Authenticate the Linear MCP server:
+   Launch Claude Code and run `/mcp` to open the MCP authentication flow, then authorize the `linear-server` connection with your Linear account.
+
 ## Usage
 
 ```bash
