@@ -88,6 +88,58 @@ def load_env():
     return env
 
 
+def fetch_pr_review_comments(branch: str, repo_path: str) -> str:
+    # Get PR number
+    pr_view = subprocess.run(
+        ["gh", "pr", "view", branch, "--json", "number,reviews,comments"],
+        capture_output=True, text=True, cwd=repo_path,
+    )
+    if pr_view.returncode != 0:
+        return ""
+
+    pr_data = json.loads(pr_view.stdout)
+    pr_number = pr_data["number"]
+    parts = []
+
+    # Top-level review comments
+    for review in pr_data.get("reviews", []):
+        body = review.get("body", "").strip()
+        if body:
+            state = review.get("state", "")
+            author = review.get("author", {}).get("login", "unknown")
+            parts.append(f"[review ({state}) by {author}]\n{body}")
+
+    # Top-level PR comments
+    for comment in pr_data.get("comments", []):
+        body = comment.get("body", "").strip()
+        if body:
+            author = comment.get("author", {}).get("login", "unknown")
+            parts.append(f"[comment by {author}]\n{body}")
+
+    # Inline review comments (file-level)
+    # Get repo owner/name from git remote
+    remote = subprocess.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+        capture_output=True, text=True, cwd=repo_path,
+    )
+    if remote.returncode == 0:
+        repo_slug = remote.stdout.strip()
+        inline = subprocess.run(
+            ["gh", "api", f"repos/{repo_slug}/pulls/{pr_number}/comments"],
+            capture_output=True, text=True, cwd=repo_path,
+        )
+        if inline.returncode == 0:
+            for c in json.loads(inline.stdout):
+                path = c.get("path", "")
+                line = c.get("original_line") or c.get("line") or ""
+                body = c.get("body", "").strip()
+                author = c.get("user", {}).get("login", "unknown")
+                if body:
+                    parts.append(f"[{path}:{line} by {author}]\n{body}")
+
+    return "\n\n".join(parts)
+
+
 def mark_failed(issue_id: str, log_file: Path):
     tail = ""
     if log_file.exists():
@@ -125,6 +177,22 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
         prompt = prompt.replace("{{ISSUE_DETAIL}}", json.dumps(issue_detail, indent=2, ensure_ascii=False))
         todo_state_id = fetch_todo_state_id()
         prompt = prompt.replace("{{TODO_STATE_ID}}", todo_state_id)
+    elif phase == "review":
+        issue_detail = fetch_issue_detail(issue_id)
+        prompt = prompt.replace("{{ISSUE_DETAIL}}", json.dumps(issue_detail, indent=2, ensure_ascii=False))
+
+        parent_data = fetch_sub_issues(issue_id)
+        prompt = prompt.replace("{{PLAN_DOCUMENTS}}", json.dumps(parent_data.get("documents", []), indent=2, ensure_ascii=False))
+
+        pr_diff = subprocess.run(
+            ["gh", "pr", "diff", issue_identifier],
+            capture_output=True, text=True, cwd=repo_path,
+        )
+        prompt = prompt.replace("{{PR_DIFF}}", pr_diff.stdout or "(unavailable)")
+
+        review_comments = fetch_pr_review_comments(issue_identifier, repo_path)
+        prompt = prompt.replace("{{REVIEW_COMMENTS}}", review_comments or "(no comments)")
+
     elif phase == "implementing":
         sub_detail = fetch_issue_detail(issue_id)
         prompt = prompt.replace("{{SUB_ISSUE_DETAIL}}", json.dumps(sub_detail, indent=2, ensure_ascii=False))
@@ -151,6 +219,10 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
         worktree_dir = worktree_base / repo.name / issue_identifier
         worktree_dir.parent.mkdir(parents=True, exist_ok=True)
         work_dir = worktree_dir
+    elif phase == "review":
+        worktree_dir = worktree_base / repo.name / issue_identifier
+        worktree_dir.parent.mkdir(parents=True, exist_ok=True)
+        work_dir = worktree_dir
     else:
         print(f"Unknown phase: {phase}", file=sys.stderr)
         sys.exit(1)
@@ -173,6 +245,16 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
                     print(f"Failed to create worktree for {issue_identifier}: {ret.stderr.strip()}", file=sys.stderr)
                     mark_failed(issue_id, log_file)
                     sys.exit(1)
+        elif phase == "review":
+            # Checkout existing branch (PR already exists)
+            ret = subprocess.run(
+                ["git", "-C", str(repo), "worktree", "add", str(worktree_dir), issue_identifier],
+                capture_output=True, text=True,
+            )
+            if ret.returncode != 0:
+                print(f"Failed to create worktree for review {issue_identifier}: {ret.stderr.strip()}", file=sys.stderr)
+                mark_failed(issue_id, log_file)
+                sys.exit(1)
 
         run_env = {**os.environ}
         run_env.pop("CLAUDECODE", None)
@@ -193,6 +275,11 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
                 "mcp__linear-server__list_documents",
                 "mcp__linear-server__list_comments",
                 "mcp__linear-server__save_issue",
+            ],
+            "review": [
+                "mcp__linear-server__save_issue",
+                "mcp__linear-server__get_issue",
+                "mcp__linear-server__list_documents",
             ],
         }
 
@@ -226,6 +313,8 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
             update_issue_state(issue_id, "Pending Approval")
         elif phase == "implementing":
             update_issue_state(issue_id, "Done")
+        elif phase == "review":
+            update_issue_state(issue_id, "In Review")
 
         # Merge sub-issue branch into parent branch
         if parent_identifier and ret.returncode == 0:
@@ -260,6 +349,7 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
                 ["git", "-C", str(repo), "branch", "-D", issue_identifier],
                 capture_output=True,
             )
+        # review: worktree removed but branch kept (push済みのため)
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
