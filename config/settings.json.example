@@ -1,6 +1,5 @@
 {
   "team": "",
-  "team_id": "",
   "budget": {
     "poll": "0.10",
     "planning": "1.00",
@@ -22,9 +21,9 @@
     "pr": "haiku",
     "review": "opus"
   },
-  "log_dir": "/home/take/dev/forge/logs",
-  "lock_dir": "/home/take/dev/forge/lock",
-  "worktree_dir": "/home/take/worktrees",
+  "log_dir": "/path/to/logs",
+  "lock_dir": "/path/to/lock",
+  "worktree_dir": "/path/to/worktrees",
   "max_concurrent": 3,
   "lock_timeout_min": 60,
   "sandbox": {

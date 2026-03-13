@@ -2,19 +2,29 @@
 
 Linear-driven AI agent. Automatically plans and implements tasks triggered by issue status changes.
 
-## Setup
+## Linear Setup
 
-```bash
-./setup.sh
-```
+### API Key
 
-### Prerequisites
+Create at Settings → API → Personal API keys.
+
+### GitHub Integration
+
+Connect at Settings → Integrations → GitHub. Required for automatic PR syncing.
+
+### Issue Statuses
+
+Add the following statuses at Settings → Teams → Issue statuses & automations:
+- Planning, Pending Approval, Plan Changes Requested, Implementing, Changes Requested, Failed
+
+(Backlog, In Review, Done, Cancelled exist by default in Linear)
+## Prerequisites
 
 - Python 3.10+
 - Node.js (for Linear MCP server via `npx`)
 - [Claude Code](https://claude.com/claude-code) CLI
 - [GitHub CLI](https://cli.github.com/) (`gh`)
-- [Linear](https://linear.app/) account with API key
+- [Linear](https://linear.app/) account
 - `bubblewrap` and `socat` (for sandbox)
 
 ```bash
@@ -31,7 +41,10 @@ sudo apt-get install bubblewrap socat
    cp config/repos.conf.example config/repos.conf
    ```
 
-2. Edit `config/settings.json` — set `team_id`, model/budget settings, directories, etc.
+2. Edit `config/settings.json`:
+   - `team` — Linear team name (required; `team_id` is resolved automatically via API)
+   - `log_dir`, `lock_dir`, `worktree_dir` — directory paths (required)
+   - Optional: `model`, `budget`, `max_turns`, `max_concurrent`, `sandbox`
 
 3. Edit `config/secrets.env` — set `LINEAR_API_KEY`
 
@@ -42,13 +55,14 @@ sudo apt-get install bubblewrap socat
 
 5. Add the Linear MCP server to Claude Code:
    ```bash
-   claude mcp add linear-server -- npx -y @anthropic-ai/linear-mcp-server
+   claude mcp add -s user linear-server -- npx -y @anthropic-ai/linear-mcp-server
    ```
 
 ## Usage
 
 ```bash
-python -m forge
+python -m forge --check  # check environment
+python -m forge          # run
 ```
 
 Or via the wrapper script:
@@ -57,48 +71,16 @@ Or via the wrapper script:
 bin/main.sh
 ```
 
-## Architecture
+### Daemon / systemd
 
-```
-orchestrator.py (python -m forge)
-  ├── Poll "Planning" issues → dispatch to planning prompt
-  ├── Poll "Plan Changes Requested" issues → dispatch to plan_review prompt
-  ├── Poll "Implementing" issues (parent) → fetch sub-issues + dependency check
-  │   ├── Filter ready sub-issues (blockers resolved, not terminal)
-  │   └── Dispatch each to implementing prompt
-  ├── Poll "Changes Requested" issues → dispatch to review prompt
-  └── Wait for all processes
+```bash
+# Run as daemon (FORGE_POLL_INTERVAL sets interval, default 300s)
+FORGE_POLL_INTERVAL=300 bin/daemon.sh
 
-executor.py (python -m forge.executor)
-  ├── Load prompt template + substitute variables
-  ├── Pre-fetch Linear data (issue detail, documents, sub-issues, comments)
-  ├── Create worktree (implementing / review only)
-  ├── Write sandbox settings
-  └── Execute claude CLI in sandboxed environment
-
-Planning (prompts/planning.md)
-  ├── Delegate code investigation to Plan agent
-  ├── Create plan document + sub-issues
-  ├── Validate dependency cycle
-  └── Update status → Pending Approval
-
-Plan Review (prompts/plan_review.md)
-  ├── Read review feedback from issue comments
-  ├── Incrementally update plan document + sub-issues
-  ├── Validate dependency cycle
-  └── Update status → Pending Approval
-
-Implementing (prompts/implementing.md)
-  ├── Conductor fetches issue + parent context + plan
-  ├── Launch implementer agent (Sonnet)
-  ├── Launch reviewer agent (Opus)
-  ├── Feedback loop (max 2 rounds)
-  └── Commit → Push → Merge to parent branch → Linear update
-
-Review (prompts/review.md)
-  ├── Read PR review comments + diff
-  ├── Fix issues in worktree
-  └── Commit → Push → Update status → In Review
+# Register and manage as systemd service
+bin/service-systemd.sh register
+bin/service-systemd.sh enable
+bin/service-systemd.sh start
 ```
 
 ## Workflow
@@ -119,40 +101,6 @@ Backlog → Planning → Pending Approval ⇄ Plan Changes Requested → Impleme
 | Failed | Started | Auto | Execution failed |
 | Done | Completed | Auto | Completed |
 | Cancelled | Cancelled | Human | Cancelled |
-
-### Linear Setup
-
-Configure issue statuses in **Settings → Teams → Issue statuses & automations**.
-
-Enable the following automations:
-- Auto-complete parent issue when all sub-issues are Done
-- Auto-cancel all sub-issues when parent issue is Cancelled
-
-## File Structure
-
-| Path | Description |
-|------|-------------|
-| `forge/__main__.py` | Entry point (`python -m forge`) |
-| `forge/constants.py` | State/phase constants |
-| `forge/config.py` | Configuration loading, repo resolution |
-| `forge/linear.py` | Linear GraphQL client |
-| `forge/git.py` | git/gh subprocess wrappers |
-| `forge/claude.py` | Claude CLI execution, sandbox settings |
-| `forge/orchestrator.py` | Polling, dispatch, PR creation |
-| `forge/executor.py` | Per-issue execution (prompt, worktree, post-processing) |
-| `bin/check_cycle.py` | Dependency cycle detection CLI |
-| `bin/main.sh` | Shell wrapper |
-| `bin/daemon.sh` | Daemon loop wrapper for systemd |
-| `bin/service-systemd.sh` | systemd user service management |
-| `prompts/planning.md` | Planning phase prompt template |
-| `prompts/plan_review.md` | Plan review phase prompt template |
-| `prompts/implementing.md` | Implementing phase prompt (conductor pattern) |
-| `prompts/review.md` | PR review feedback phase prompt |
-| `prompts/pr.md` | PR description generation prompt |
-| `config/settings.json` | Configuration — models, budgets, directories (gitignored) |
-| `config/secrets.env` | Credentials — LINEAR_API_KEY (gitignored) |
-| `config/repos.conf` | Label → repo path mapping (gitignored) |
-| `setup.sh` | Environment setup and validation script |
 
 ## Models
 
