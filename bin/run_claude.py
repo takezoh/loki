@@ -86,13 +86,15 @@ def mark_failed(env: dict, issue_id: str, log_file: Path):
         capture_output=True, text=True, env=run_env,
     )
 
-def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent_issue_id: str = ""):
+def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
+        parent_issue_id: str = "", parent_identifier: str = ""):
     env = load_env()
     log_dir = Path(env["FORGE_LOG_DIR"])
     lock_dir = Path(env["FORGE_LOCK_DIR"])
     log_file = log_dir / f"{issue_identifier}-{datetime.now():%Y%m%d-%H%M%S}.log"
     lock_file = lock_dir / f"{issue_id}.lock"
     worktree_dir = None
+    worktree_base = Path(env["FORGE_WORKTREE_DIR"])
 
     prompt_file = FORGE_ROOT / "prompts" / f"{phase}.md"
     if not prompt_file.exists():
@@ -103,6 +105,7 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
     prompt = prompt.replace("{{ISSUE_ID}}", issue_id)
     prompt = prompt.replace("{{ISSUE_IDENTIFIER}}", issue_identifier)
     prompt = prompt.replace("{{PARENT_ISSUE_ID}}", parent_issue_id)
+    prompt = prompt.replace("{{PARENT_IDENTIFIER}}", parent_identifier)
 
     repo = Path(repo_path)
 
@@ -117,13 +120,13 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
     if phase == "planning":
         work_dir = repo
     elif phase == "implementing":
-        worktree_base = Path(env["FORGE_WORKTREE_DIR"])
         worktree_dir = worktree_base / repo.name / issue_identifier
         worktree_dir.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create worktree: new branch or existing branch
+        # Create worktree: new branch from parent branch (or main)
+        base_branch = parent_identifier if parent_identifier else "main"
         ret = subprocess.run(
-            ["git", "-C", str(repo), "worktree", "add", str(worktree_dir), "-b", issue_identifier, "main"],
+            ["git", "-C", str(repo), "worktree", "add", str(worktree_dir), "-b", issue_identifier, base_branch],
             capture_output=True,
         )
         if ret.returncode != 0:
@@ -144,7 +147,11 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
         run_env = {**os.environ}
         run_env.pop("CLAUDECODE", None)
 
-        setup_sandbox(work_dir, log_dir)
+        extra_write = []
+        if parent_identifier:
+            parent_wt = worktree_base / repo.name / parent_identifier
+            extra_write.append(str(parent_wt))
+        setup_sandbox(work_dir, log_dir, extra_write_paths=extra_write or None)
 
         cmd = [
             "claude", "--print",
@@ -167,6 +174,28 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
         if ret.returncode != 0:
             mark_failed(env, issue_id, log_file)
             sys.exit(1)
+
+        # Merge sub-issue branch into parent branch
+        if parent_identifier and ret.returncode == 0:
+            import fcntl
+            merge_lock = lock_dir / f"merge-{parent_identifier}.lock"
+            parent_wt = worktree_base / repo.name / parent_identifier
+            with open(merge_lock, "w") as lf:
+                fcntl.flock(lf, fcntl.LOCK_EX)
+                merge_ret = subprocess.run(
+                    ["git", "-C", str(parent_wt), "merge", "--no-ff", issue_identifier,
+                     "-m", f"Merge {issue_identifier}"],
+                    capture_output=True, text=True,
+                )
+                if merge_ret.returncode != 0:
+                    subprocess.run(["git", "-C", str(parent_wt), "merge", "--abort"],
+                                   capture_output=True)
+                    mark_failed(env, issue_id, log_file)
+                    sys.exit(1)
+                subprocess.run(
+                    ["git", "-C", str(parent_wt), "push", "-u", "origin", parent_identifier],
+                    capture_output=True,
+                )
     finally:
         lock_file.unlink(missing_ok=True)
         if worktree_dir and worktree_dir.exists():
@@ -174,10 +203,16 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str, parent
                 ["git", "-C", str(repo), "worktree", "remove", str(worktree_dir), "--force"],
                 capture_output=True,
             )
+        if phase == "implementing":
+            subprocess.run(
+                ["git", "-C", str(repo), "branch", "-D", issue_identifier],
+                capture_output=True,
+            )
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
-        print("Usage: run_claude.py <phase> <issue_id> <identifier> <repo_path> [parent_issue_id]", file=sys.stderr)
+        print("Usage: run_claude.py <phase> <issue_id> <identifier> <repo_path> [parent_issue_id] [parent_identifier]", file=sys.stderr)
         sys.exit(1)
     parent_id = sys.argv[5] if len(sys.argv) > 5 else ""
-    run(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], parent_id)
+    parent_ident = sys.argv[6] if len(sys.argv) > 6 else ""
+    run(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], parent_id, parent_ident)

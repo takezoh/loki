@@ -88,26 +88,20 @@ Execute all of the following yourself:
 1. **Commit**:
    - `git add` only relevant files (do not include unnecessary files)
    - Message format: `{{ISSUE_IDENTIFIER}}: brief description of changes`
-2. **Push**:
-   - `git push -u origin {{ISSUE_IDENTIFIER}}`
-3. **Create Draft PR**:
-   - `gh pr create --draft --title "{{ISSUE_IDENTIFIER}}: title" --body "..."`
-   - Body should include a summary of changes
-4. **Post detailed report as comment on sub-issue** (`save_comment`):
+   - Do NOT push or create a PR (merging and pushing is handled externally)
+2. **Post detailed report as comment on sub-issue** (`save_comment`):
    Include:
    - List of changed files
    - Summary of changes (what was changed and how)
    - Test results
    - Number of review loop iterations and final review result
-   - PR URL
-5. **Post summary comment on parent issue** (`save_comment`, Issue ID: `{{PARENT_ISSUE_ID}}`):
+3. **Post summary comment on parent issue** (`save_comment`, Issue ID: `{{PARENT_ISSUE_ID}}`):
    Use this format:
    ```
-   **{{ISSUE_IDENTIFIER}}**: {one-line summary of changes}
-   PR: {PR URL}
+   **{{ISSUE_IDENTIFIER}}**: {one-line summary of changes} (merged into {{PARENT_IDENTIFIER}})
    Details: {link to sub-issue identifier}
    ```
-6. **Update status**:
+4. **Update status**:
    - Use `save_issue` to change sub-issue status to "Done"
 
 ### On Error
@@ -120,6 +114,8 @@ If implementation makes no progress / agent fails with an error:
 ## Notes
 
 - The branch is already created in the worktree (branch name: {{ISSUE_IDENTIFIER}})
+- The branch is based on the parent branch ({{PARENT_IDENTIFIER}}), not main
+- Do NOT push or create PRs — merging into the parent branch and pushing is handled by the forge system
 - Writing code is the implementer agent's job. The conductor must not edit code directly
 - Pass the reviewer agent's output to the implementer as-is (do not summarize)
 - Final steps (commit through status update) must be done by the conductor
