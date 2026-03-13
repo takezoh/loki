@@ -15,8 +15,27 @@ DEFAULT_SANDBOX_SETTINGS = {
         "autoAllowBashIfSandboxed": True,
         "allowUnsandboxedCommands": False,
         "filesystem": {
-            "denyRead": ["~/.ssh", "~/.aws", "~/.gnupg"],
-            "denyWrite": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.bashrc", "~/.zshrc"],
+            "denyRead": [
+                "~/.ssh",
+                "~/.aws",
+                "~/.gnupg",
+                "~/.bash_history",
+                "~/.zsh_history",
+                "~/.netrc",
+                "~/.docker",
+                "~/.kube",
+                "~/.local/share/atuin",
+                "~/.secrets",
+                "~/.1password",
+                "~/.codex",
+                "~/.pki",
+                "~/.config/gcloud",
+                "~/.config/op",
+                "~/.terraform.d",
+                "~/.gsutil",
+                "~/.local/config",
+                "~/.antigravity-server",
+            ],
         },
         "network": {
             "allowManagedDomainsOnly": True,
@@ -82,6 +101,7 @@ def setup_sandbox(work_dir: Path, log_dir: Path | None = None,
     if extra_write_paths:
         allow_write.extend(extra_write_paths)
     settings["sandbox"]["filesystem"]["allowWrite"] = allow_write
+    settings["sandbox"]["filesystem"]["denyRead"].append(str(FORGE_ROOT / "config"))
 
     claude_dir = work_dir / ".claude"
     claude_dir.mkdir(exist_ok=True)
@@ -97,12 +117,7 @@ def resolve_config(phase: str, env: dict) -> dict:
     budget = env.get(budget_key, "1.00")
     max_turns = env[turns_key]
 
-    cfg = _load_config()
-    disallowed_tools_map = cfg.get("disallowed_tools", {})
-    if phase in disallowed_tools_map:
-        disallowed = disallowed_tools_map[phase]
-    else:
-        disallowed = DEFAULT_DISALLOWED_TOOLS_MAP.get(phase, [])
+    disallowed = DEFAULT_DISALLOWED_TOOLS_MAP.get(phase, [])
 
     return {
         "model": model,
@@ -129,7 +144,6 @@ def run(prompt: str, work_dir: Path, *,
         "--max-budget-usd", budget,
         "--max-turns", max_turns,
         "--model", model,
-        "--dangerously-skip-permissions",
         "-p", prompt,
     ]
     if disallowed_tools:

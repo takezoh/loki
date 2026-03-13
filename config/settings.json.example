@@ -26,5 +26,43 @@
   "lock_dir": "/home/take/dev/forge/lock",
   "worktree_dir": "/home/take/worktrees",
   "max_concurrent": 3,
-  "lock_timeout_min": 60
+  "lock_timeout_min": 60,
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.gnupg",
+        "~/.bash_history",
+        "~/.zsh_history",
+        "~/.netrc",
+        "~/.docker",
+        "~/.kube",
+        "~/.local/share/atuin",
+        "~/.secrets",
+        "~/.1password",
+        "~/.codex",
+        "~/.pki",
+        "~/.config/gcloud",
+        "~/.config/op",
+        "~/.terraform.d",
+        "~/.gsutil",
+        "~/.local/config",
+        "~/.antigravity-server"
+      ]
+    },
+    "network": {
+      "allowManagedDomainsOnly": true,
+      "allowedDomains": [
+        "api.linear.app",
+        "github.com",
+        "*.github.com",
+        "*.githubusercontent.com",
+        "api.anthropic.com"
+      ]
+    }
+  }
 }

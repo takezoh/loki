@@ -10,7 +10,7 @@ from .constants import (STATE_PENDING_APPROVAL, STATE_DONE, STATE_IN_REVIEW,
 from .git import (detect_default_branch, worktree_add, worktree_remove,
                   merge, merge_abort, push, delete_branch, pr_diff,
                   fetch_pr_review_comments)
-from .claude import run as run_claude
+from .claude import run as run_claude, resolve_config
 from .linear import (update_issue_state, create_comment, fetch_issue_detail,
                      fetch_issue_comments, fetch_todo_state_id, fetch_sub_issues)
 
@@ -157,7 +157,9 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
         if parent_identifier:
             extra_write.append(str(worktree_base / repo.name / parent_identifier))
 
-        ret = run_claude(prompt, work_dir, log_dir, log_file, env, phase,
+        cfg = resolve_config(phase, env)
+        ret = run_claude(prompt, work_dir, **cfg,
+                         log_dir=log_dir, log_file=log_file,
                          extra_write_paths=extra_write or None)
 
         if ret.returncode != 0:
