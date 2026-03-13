@@ -4,8 +4,6 @@ import subprocess
 from pathlib import Path
 
 from .config import FORGE_ROOT
-from .constants import (PHASE_PLANNING, PHASE_IMPLEMENTING,
-                        PHASE_PLAN_REVIEW, PHASE_REVIEW)
 from .git import detect_default_branch, diff_stat
 from .linear import fetch_issue_detail, fetch_sub_issues
 
@@ -50,29 +48,6 @@ DEFAULT_SANDBOX_SETTINGS = {
     }
 }
 
-DEFAULT_DISALLOWED_TOOLS_MAP = {
-    PHASE_PLANNING: [
-        "mcp__linear-server__get_issue",
-        "mcp__linear-server__list_issue_statuses",
-    ],
-    PHASE_IMPLEMENTING: [
-        "mcp__linear-server__get_issue",
-        "mcp__linear-server__list_documents",
-        "mcp__linear-server__list_comments",
-        "mcp__linear-server__save_issue",
-    ],
-    PHASE_PLAN_REVIEW: [
-        "mcp__linear-server__get_issue",
-        "mcp__linear-server__list_issue_statuses",
-    ],
-    PHASE_REVIEW: [
-        "mcp__linear-server__save_issue",
-        "mcp__linear-server__get_issue",
-        "mcp__linear-server__list_documents",
-    ],
-}
-
-
 def _deep_merge(base: dict, override: dict) -> dict:
     result = base.copy()
     for key, val in override.items():
@@ -107,24 +82,6 @@ def setup_sandbox(work_dir: Path, log_dir: Path | None = None,
     claude_dir.mkdir(exist_ok=True)
     settings_file = claude_dir / "settings.local.json"
     settings_file.write_text(json.dumps(settings, indent=2))
-
-
-def resolve_config(phase: str, env: dict) -> dict:
-    model_key = f"FORGE_MODEL_{phase.upper()}"
-    budget_key = f"FORGE_BUDGET_{phase.upper()}"
-    turns_key = f"FORGE_MAX_TURNS_{phase.upper()}"
-    model = env.get(model_key, env["FORGE_MODEL"])
-    budget = env.get(budget_key, "1.00")
-    max_turns = env[turns_key]
-
-    disallowed = DEFAULT_DISALLOWED_TOOLS_MAP.get(phase, [])
-
-    return {
-        "model": model,
-        "budget": budget,
-        "max_turns": max_turns,
-        "disallowed_tools": disallowed,
-    }
 
 
 def run(prompt: str, work_dir: Path, *,

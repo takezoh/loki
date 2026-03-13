@@ -10,9 +10,49 @@ from .constants import (STATE_PENDING_APPROVAL, STATE_DONE, STATE_IN_REVIEW,
 from .git import (detect_default_branch, worktree_add, worktree_remove,
                   merge, merge_abort, push, delete_branch, pr_diff,
                   fetch_pr_review_comments)
-from .claude import run as run_claude, resolve_config
+from .claude import run as run_claude
 from .linear import (update_issue_state, create_comment, fetch_issue_detail,
                      fetch_issue_comments, fetch_todo_state_id, fetch_sub_issues)
+
+DISALLOWED_TOOLS_MAP = {
+    PHASE_PLANNING: [
+        "mcp__linear-server__get_issue",
+        "mcp__linear-server__list_issue_statuses",
+    ],
+    PHASE_IMPLEMENTING: [
+        "mcp__linear-server__get_issue",
+        "mcp__linear-server__list_documents",
+        "mcp__linear-server__list_comments",
+        "mcp__linear-server__save_issue",
+    ],
+    PHASE_PLAN_REVIEW: [
+        "mcp__linear-server__get_issue",
+        "mcp__linear-server__list_issue_statuses",
+    ],
+    PHASE_REVIEW: [
+        "mcp__linear-server__save_issue",
+        "mcp__linear-server__get_issue",
+        "mcp__linear-server__list_documents",
+    ],
+}
+
+
+def resolve_config(phase: str, env: dict) -> dict:
+    model_key = f"FORGE_MODEL_{phase.upper()}"
+    budget_key = f"FORGE_BUDGET_{phase.upper()}"
+    turns_key = f"FORGE_MAX_TURNS_{phase.upper()}"
+    model = env.get(model_key, env["FORGE_MODEL"])
+    budget = env.get(budget_key, "1.00")
+    max_turns = env[turns_key]
+
+    disallowed = DISALLOWED_TOOLS_MAP.get(phase, [])
+
+    return {
+        "model": model,
+        "budget": budget,
+        "max_turns": max_turns,
+        "disallowed_tools": disallowed,
+    }
 
 
 def mark_failed(issue_id: str, log_file: Path):
