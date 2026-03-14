@@ -288,6 +288,23 @@ query($issueId: String!) {
 }
 """
 
+ISSUE_STATE_QUERY = """
+query($issueId: String!) {
+  issue(id: $issueId) {
+    state { name }
+  }
+}
+"""
+
+
+def fetch_issue_state(issue_id: str, env=None) -> str:
+    if env is None:
+        env = load_env()
+    api_key = get_api_key(env)
+    data = graphql(api_key, ISSUE_STATE_QUERY, {"issueId": issue_id})
+    return data.get("data", {}).get("issue", {}).get("state", {}).get("name", "")
+
+
 ISSUE_COMMENTS_QUERY = """
 query($issueId: String!) {
   issue(id: $issueId) {

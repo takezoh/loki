@@ -120,7 +120,10 @@ def check():
         return 1
 
 
-if "--check" in sys.argv:
+if "--webhook" in sys.argv:
+    from .webhook import serve
+    serve()
+elif "--check" in sys.argv:
     sys.exit(check())
 else:
     from .orchestrator import main
