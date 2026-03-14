@@ -14,7 +14,7 @@ from config.constants import (STATE_PLANNING, STATE_IMPLEMENTING,
                         STATE_PLAN_CHANGES_REQUESTED, STATE_CHANGES_REQUESTED,
                         PHASE_PLANNING, PHASE_IMPLEMENTING,
                         PHASE_REVIEW, PHASE_PLAN_REVIEW)
-from lib.linear import emit_thought, emit_response, emit_error, fetch_issue_detail, fetch_issue_state
+from lib.linear import emit_thought, emit_response, emit_error, fetch_issue_detail, fetch_issue_state, update_issue_state
 from forge.queue import enqueue, wake
 
 app = Flask(__name__)
@@ -95,6 +95,30 @@ def _handle_stop(payload: dict, env: dict):
     emit_response(session_id, "Stopped.", api_key)
 
 
+def _handle_created_issue(payload: dict, env: dict):
+    data = payload.get("data", {})
+    issue_id = data.get("id", "")
+    state_name = data.get("state", {}).get("name", "")
+    parent_id = data.get("parentId")
+
+    if parent_id:
+        return
+
+    if not issue_id:
+        return
+
+    phase = STATE_TO_PHASE.get(state_name)
+    if phase is None:
+        phase = PHASE_PLANNING
+        update_issue_state(issue_id, STATE_PLANNING, env)
+
+    queue_dir = env["FORGE_QUEUE_DIR"]
+    pid_file = env["FORGE_PID_FILE"]
+
+    enqueue(queue_dir, issue_id, "", phase)
+    wake(pid_file)
+
+
 def _handle_status_change(payload: dict, env: dict):
     updated_from = payload.get("updatedFrom", {})
     if "stateId" not in updated_from:
@@ -126,8 +150,12 @@ def _process_event(payload: dict, env: dict):
                 _handle_prompted(payload, env)
             elif action == "stop":
                 _handle_stop(payload, env)
-        elif event_type == "Issue" and payload.get("action") == "update":
-            _handle_status_change(payload, env)
+        elif event_type == "Issue":
+            action = payload.get("action")
+            if action == "update":
+                _handle_status_change(payload, env)
+            elif action == "create":
+                _handle_created_issue(payload, env)
     except Exception as e:
         session_id = payload.get("agentSession", {}).get("id", "")
         api_key = get_api_key(env)
