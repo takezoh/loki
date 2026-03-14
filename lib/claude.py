@@ -113,7 +113,11 @@ def generate_pr_body(parent_id: str, parent_identifier: str, repo_path: str,
     if ret.returncode != 0:
         return parent_detail.get("title", parent_identifier), f"Parent issue: {parent_identifier}\n\nAll sub-issues completed."
 
-    output = ret.stdout.strip()
+    try:
+        data = json.loads(ret.stdout)
+        output = data.get("result", ret.stdout.strip())
+    except json.JSONDecodeError:
+        output = ret.stdout.strip()
     title = parent_detail.get("title", parent_identifier)
     body = output
 
