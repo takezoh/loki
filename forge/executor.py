@@ -15,6 +15,7 @@ from lib.git import (detect_default_branch, has_new_commits, worktree_add,
                   worktree_remove, merge, merge_abort, push, delete_branch,
                   pr_diff, fetch_pr_review_comments)
 from lib.claude import run as run_claude
+from forge.queue import wake
 
 def resolve_config(phase: str, env: dict) -> dict:
     model_key = f"FORGE_MODEL_{phase.upper()}"
@@ -180,7 +181,7 @@ def setup_worktree(phase, repo, issue_identifier, parent_identifier, worktree_ba
 
 def post_execute(phase, issue_id, issue_identifier, parent_issue_id, parent_identifier, repo,
                  worktree_base, lock_dir, log_file, work_dir=None, base_branch=None,
-                 session_id="", api_key=""):
+                 session_id="", api_key="", env=None):
     if phase == PHASE_PLANNING:
         result = fetch_sub_issues(issue_id)
         if not result.get("sub_issues"):
@@ -209,6 +210,9 @@ def post_execute(phase, issue_id, issue_identifier, parent_issue_id, parent_iden
         if parent_issue_id:
             summary = f"**{issue_identifier}**: {'Already implemented' if already_implemented else 'Implementation complete'}"
             create_comment(parent_issue_id, summary)
+
+        pid_file = (env or {}).get("FORGE_PID_FILE", "")
+        wake(pid_file)
     elif phase == PHASE_REVIEW:
         update_issue_state(issue_id, STATE_IN_REVIEW)
 
@@ -281,7 +285,7 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
         post_execute(phase, issue_id, issue_identifier, parent_issue_id,
                      parent_identifier, repo, worktree_base, lock_dir, log_file,
                      work_dir=work_dir, base_branch=base_branch,
-                     session_id=session_id, api_key=api_key)
+                     session_id=session_id, api_key=api_key, env=env)
 
         if session_id:
             emit_response(session_id, f"Completed {phase}", api_key)
