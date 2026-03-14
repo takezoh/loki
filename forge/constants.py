@@ -16,3 +16,17 @@ PHASE_PLANNING = "planning"
 PHASE_IMPLEMENTING = "implementing"
 PHASE_REVIEW = "review"
 PHASE_PLAN_REVIEW = "plan_review"
+
+# Agent Session states (参照用、手動管理不要)
+SESSION_PENDING = "pending"
+SESSION_ACTIVE = "active"
+SESSION_ERROR = "error"
+SESSION_AWAITING_INPUT = "awaitingInput"
+SESSION_COMPLETE = "complete"
+
+# Agent Activity types
+ACTIVITY_THOUGHT = "thought"
+ACTIVITY_ACTION = "action"
+ACTIVITY_RESPONSE = "response"
+ACTIVITY_ERROR = "error"
+ACTIVITY_ELICITATION = "elicitation"
