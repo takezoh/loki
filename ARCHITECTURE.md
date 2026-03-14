@@ -97,15 +97,10 @@ forge (daemon)  → consume_queue(queue_dir) → merged into session_map → dis
 
 ## Sandbox
 
-Sandbox configuration for Claude CLI execution. `setup_sandbox` in `lib/claude.py` writes to `.claude/settings.local.json` inside the worktree.
+Configure sandbox settings in `claude.sandbox` in `settings.json` (see `settings.json.example`).
+See [Claude Code sandboxing docs](https://code.claude.com/docs/en/sandboxing) for available options.
 
-| Category | Setting | Description |
-|----------|---------|-------------|
-| Filesystem | `denyRead` / `denyWrite` | Denies `~` by default. Dynamically adds worktree and log directories to `allowWrite` |
-| Network | `allowManagedDomainsOnly` | When `true`, only allows communication with `allowedDomains` |
-| Network | `allowedDomains` | `api.linear.app`, `github.com`, `*.github.com`, `*.githubusercontent.com`, `api.anthropic.com` |
-| Execution | `autoAllowBashIfSandboxed` | Automatically allows the Bash tool when sandbox is enabled |
-| Execution | `allowUnsandboxedCommands` | `false` — Prohibits command execution outside the sandbox |
+`setup_sandbox` in `lib/claude.py` writes `claude` settings to `.claude/settings.local.json` inside the worktree, dynamically adding log directory and parent repo's `.git/worktrees` to `allowWrite`. Sub-issue execution also adds the parent issue's worktree directory.
 
 ## Configuration
 
