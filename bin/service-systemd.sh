@@ -72,7 +72,7 @@ _logs() {
 
 # --- forge (polling daemon) ---
 
-cmd_register_polling()   { _register_service "forge" "Forge - Linear-driven AI agent" "${FORGE_ROOT}/bin/forge.sh --interval 300" 30; }
+cmd_register_polling()   { _register_service "forge" "Forge - Linear-driven AI agent" "${FORGE_ROOT}/bin/forge.sh" 30; }
 cmd_unregister_polling() { _unregister_service "forge"; }
 cmd_enable_polling()     { _systemctl_cmd enable forge; }
 cmd_disable_polling()    { _systemctl_cmd disable forge; }

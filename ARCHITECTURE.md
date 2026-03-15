@@ -25,7 +25,7 @@ forge is an agent system that automatically executes tasks via Claude Code CLI, 
 
 | Module | Role |
 |--------|------|
-| `__main__.py` | Entry point. `--check` for environment validation, `--interval N` for daemon startup |
+| `__main__.py` | Entry point. `--check` for environment validation, `--interval N` to override polling interval (default: 300s) |
 | `orchestrator.py` | Main loop. Polling → queue consumption → lock management → `executor` subprocess launch → PR creation |
 | `executor.py` | Per-issue execution unit. Prompt assembly → worktree setup → Claude execution → post-processing (status update, comment posting) |
 | `queue.py` | File-based queue. `enqueue` / `dequeue_all` / `wake` (SIGUSR1) |

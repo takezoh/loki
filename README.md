@@ -74,10 +74,9 @@ sudo apt-get install bubblewrap socat
 ## Usage
 
 ```bash
-bin/forge.sh --check             # check environment
-bin/forge.sh                     # single run
-bin/forge.sh --interval 300      # polling daemon (300s interval)
-bin/webhook.sh                   # webhook server
+bin/forge.sh --check    # check environment
+bin/forge.sh            # start polling daemon
+bin/webhook.sh          # webhook server
 ```
 
 ### systemd (Linux)

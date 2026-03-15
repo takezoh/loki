@@ -284,12 +284,8 @@ def run_once(env: dict, session_map: dict[str, dict] | None = None) -> bool:
     return dispatched
 
 
-def main(interval: int = 0):
+def main(interval: int = 300):
     env = load_env()
-
-    if interval <= 0:
-        log("=== forge (single run) ===")
-        return run_once(env)
 
     pid_file = Path(env["FORGE_PID_FILE"])
     pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -311,7 +307,7 @@ def main(interval: int = 0):
             if dispatched:
                 event.wait(interval)
             else:
-                log("Idle, waiting up to 300s...")
-                event.wait(300)
+                log(f"Idle, waiting up to {interval}s...")
+                event.wait(interval)
     finally:
         pid_file.unlink(missing_ok=True)

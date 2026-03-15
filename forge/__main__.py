@@ -124,8 +124,8 @@ import argparse
 
 parser = argparse.ArgumentParser(prog="forge")
 parser.add_argument("--check", action="store_true")
-parser.add_argument("--interval", type=int, default=0,
-                    help="polling interval in seconds (0 = single run)")
+parser.add_argument("--interval", type=int, default=300,
+                    help="polling interval in seconds (default: 300)")
 args = parser.parse_args()
 
 if args.check:
