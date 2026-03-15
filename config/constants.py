@@ -21,6 +21,7 @@ PHASE_DENIED_TOOLS = {
     PHASE_PLANNING: [
         "mcp__linear-server__get_issue",
         "mcp__linear-server__list_issue_statuses",
+        "mcp__linear-server__save_comment",
     ],
     PHASE_IMPLEMENTING: [
         "mcp__linear-server__get_issue",
@@ -31,6 +32,7 @@ PHASE_DENIED_TOOLS = {
     PHASE_PLAN_REVIEW: [
         "mcp__linear-server__get_issue",
         "mcp__linear-server__list_issue_statuses",
+        "mcp__linear-server__save_comment",
     ],
     PHASE_REVIEW: [
         "mcp__linear-server__save_issue",

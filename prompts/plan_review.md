@@ -55,7 +55,7 @@ python {{FORGE_ROOT}}/scripts/check_cycle.py {{ISSUE_ID}}
 ```
 
 ### 6. Completion
-Post a summary comment on the parent issue using `save_comment`:
+Output a summary as your final response text:
 - What was changed and why (based on the feedback)
 - Updated sub-issue list with dependencies
 

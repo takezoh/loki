@@ -203,8 +203,14 @@ def post_execute(phase, issue_id, issue_identifier, parent_issue_id, parent_iden
         if not result.get("sub_issues"):
             mark_failed(issue_id, log_file, reason="Planning completed but no sub-issues were created.", session_id=session_id, api_key=api_key)
             sys.exit(1)
+        comment_body, raw_json = parse_claude_result(log_file)
+        if comment_body:
+            create_comment(issue_id, comment_body)
         update_issue_state(issue_id, STATE_PENDING_APPROVAL)
     elif phase == PHASE_PLAN_REVIEW:
+        comment_body, raw_json = parse_claude_result(log_file)
+        if comment_body:
+            create_comment(issue_id, comment_body)
         update_issue_state(issue_id, STATE_PENDING_APPROVAL)
     elif phase == PHASE_IMPLEMENTING:
         comment_body, raw_json = parse_claude_result(log_file)

@@ -61,7 +61,7 @@ python {{FORGE_ROOT}}/scripts/check_cycle.py <parent_issue_id>
 
 ### 6. Completion
 
-- Post a plan summary as a comment on the parent issue using `save_comment` (sub-issue list + dependencies)
+- Output the plan summary (sub-issue list + dependencies) as your final response text
 - Status update to "Pending Approval" is handled automatically after completion
 
 ## Notes
