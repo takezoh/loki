@@ -2,7 +2,7 @@
 
 ## Overview
 
-forge is an agent system that automatically executes tasks via Claude Code CLI, triggered by Linear issue status changes. It consists of two processes — a polling daemon (`forge`) and a webhook server (`agent`) — coordinated through a file-based queue.
+Loki is an agent system that automatically executes tasks via Claude Code CLI, triggered by Linear issue status changes. It consists of two processes — a polling daemon (`forge`) and a webhook server (`agent`) — coordinated through a file-based queue.
 
 ## Components
 

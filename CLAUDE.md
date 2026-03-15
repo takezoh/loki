@@ -1,4 +1,4 @@
-# forge
+# Loki
 
 Linear-driven AI agent. Automatically plans and implements tasks triggered by issue status changes.
 

@@ -120,7 +120,7 @@ If the required changes are already present in the codebase (e.g., implemented b
 
 - The branch is already created in the worktree (branch name: {{ISSUE_IDENTIFIER}})
 - The branch is based on the parent branch ({{PARENT_IDENTIFIER}}), not main
-- Do NOT push or create PRs — merging into the parent branch and pushing is handled by the forge system
+- Do NOT push or create PRs — merging into the parent branch and pushing is handled by the Loki system
 - Writing code is the implementer agent's job. The conductor must not edit code directly
 - Pass the reviewer agent's output to the implementer as-is (do not summarize)
 - Final steps (commit through status update) must be done by the conductor
