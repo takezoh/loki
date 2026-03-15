@@ -2,6 +2,15 @@
 
 Linear-driven AI agent. Automatically plans and implements tasks triggered by issue status changes.
 
+When a Linear issue changes status, Loki uses Claude Code CLI to automatically investigate code, create plans, implement changes, and respond to reviews — producing a GitHub PR as the final output.
+
+Two-process architecture:
+
+- **Forge** — Polling daemon. Periodically polls Linear for status changes and dispatches tasks for execution
+- **Sleipnir** — Webhook server. Receives webhooks from the Linear Agent API and relays tasks to Forge via a file-based queue
+
+Each task runs in an isolated Git worktree inside Claude Code's sandbox.
+
 ## Linear Setup
 
 ### API Key
