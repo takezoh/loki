@@ -29,8 +29,25 @@ Linear-driven AI agent. Automatically plans and implements tasks triggered by is
 
 ## Flow
 
+```mermaid
+stateDiagram-v2
+    [*] --> Planning : Issue created / status change
+    Planning --> PendingApproval : Plan needs human review
+    Planning --> Implementing : Plan auto-approved
+    PendingApproval --> Planning : Human requests changes (plan_review)
+    PendingApproval --> Implementing : Human approves
+    Implementing --> InReview : All sub-issues done + PR created
+    InReview --> ChangesRequested : Human requests changes
+    ChangesRequested --> InReview : Agent applies fixes
+    InReview --> Done : Human merges PR
+
+    PendingApproval: Pending Approval
+    InReview: In Review
+    ChangesRequested: Changes Requested
+```
+
 1. Planning: Parent issue → code investigation → plan creation → self-review → auto-approve or Pending Approval
-2. Plan Review: Pending Approval ⇄ Plan Changes Requested (human feedback → plan revision → auto-approve or Pending Approval)
+2. Plan Review: Pending Approval ⇄ Planning (human feedback → plan revision → auto-approve or Pending Approval)
 3. Sub-issue Creation: Implementing (no sub-issues) → plan to sub-issues → dependency setup → Implementing
 4. Implementing: Parent issue → sub-issue dependency resolution → worktree isolation → conductor pattern (implementer + reviewer) → PR → In Review
 5. Review: Changes Requested → fix based on PR review comments → In Review
