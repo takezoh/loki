@@ -13,10 +13,6 @@ Each task runs in an isolated Git worktree inside Claude Code's sandbox.
 
 ## Linear Setup
 
-### API Key
-
-Create at Settings → API → Personal API keys.
-
 ### GitHub Integration
 
 Connect at Settings → Integrations → GitHub. Required for automatic PR syncing.
