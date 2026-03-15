@@ -121,8 +121,6 @@ def dispatch_issue(phase: str, issue: dict, lock_dir: Path, max_concurrent: int,
         return None
 
     log(f"  Start {identifier} ({phase}): {title}")
-    lock_content = f"{identifier}\n{os.getpid()}\n{session_id}"
-    lock_file.write_text(lock_content)
 
     cmd = [sys.executable, "-m", "forge.executor", phase, issue_id, identifier, repo_path]
     if parent_id:
@@ -132,7 +130,11 @@ def dispatch_issue(phase: str, issue: dict, lock_dir: Path, max_concurrent: int,
     if session_id:
         cmd.extend(["--session-id", session_id])
 
-    return subprocess.Popen(cmd, cwd=str(FORGE_ROOT))
+    proc = subprocess.Popen(cmd, cwd=str(FORGE_ROOT))
+    lock_content = f"{identifier}\n{proc.pid}\n{session_id}"
+    lock_file.write_text(lock_content)
+
+    return proc
 
 
 def run_once(env: dict, session_map: dict[str, dict] | None = None) -> bool:

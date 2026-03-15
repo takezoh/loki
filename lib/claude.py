@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 from pathlib import Path
 
@@ -7,6 +8,12 @@ from config import FORGE_ROOT, load_config
 from config.constants import PHASE_DENIED_TOOLS
 from lib.git import detect_default_branch, diff_stat
 from lib.linear import fetch_issue_detail, fetch_sub_issues
+
+_current_process: subprocess.Popen | None = None
+
+
+def get_current_process() -> subprocess.Popen | None:
+    return _current_process
 
 
 def setup_settings(work_dir: Path, *, phase: str = "",
@@ -55,7 +62,10 @@ def run(prompt: str, work_dir: Path, *,
         phase: str = "",
         log_file: Path | None = None,
         capture_output: bool = False,
-        allow_write: list[str] | None = None):
+        allow_write: list[str] | None = None,
+        timeout: int | None = None):
+    global _current_process
+
     setup_settings(work_dir, phase=phase,
                    log_dir=log_file.parent if log_file else None,
                    extra_write_paths=allow_write)
@@ -71,20 +81,41 @@ def run(prompt: str, work_dir: Path, *,
     ]
 
     if capture_output:
-        ret = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
             cwd=work_dir,
+            start_new_session=True,
         )
+        _current_process = proc
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+        finally:
+            _current_process = None
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
     else:
         with open(log_file, "w") as log:
-            ret = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 stdout=log, stderr=subprocess.STDOUT,
                 cwd=work_dir,
+                start_new_session=True,
             )
-
-    return ret
+            _current_process = proc
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+                raise
+            finally:
+                _current_process = None
+        return subprocess.CompletedProcess(cmd, proc.returncode)
 
 
 def generate_pr_body(parent_id: str, parent_identifier: str, repo_path: str,

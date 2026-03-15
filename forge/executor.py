@@ -1,4 +1,7 @@
 import json
+import os
+import signal
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -14,18 +17,29 @@ from lib.linear import (emit_thought, emit_action, emit_response, emit_error,
 from lib.git import (detect_default_branch, has_new_commits, worktree_add,
                   worktree_remove, merge, merge_abort, push, delete_branch,
                   pr_diff, fetch_pr_review_comments)
-from lib.claude import run as run_claude
+from lib.claude import run as run_claude, get_current_process
 from forge.queue import wake
+
+PHASE_TIMEOUTS = {
+    "planning": 30 * 60,
+    "implementing": 60 * 60,
+    "plan_review": 30 * 60,
+    "review": 30 * 60,
+}
+
 
 def resolve_config(phase: str, env: dict) -> dict:
     model_key = f"FORGE_MODEL_{phase.upper()}"
     budget_key = f"FORGE_BUDGET_{phase.upper()}"
     turns_key = f"FORGE_MAX_TURNS_{phase.upper()}"
+    timeout_key = f"FORGE_TIMEOUT_{phase.upper()}"
+    timeout = int(env[timeout_key]) if timeout_key in env else PHASE_TIMEOUTS.get(phase)
     return {
         "model": env.get(model_key, env["FORGE_MODEL"]),
         "budget": env.get(budget_key, "1.00"),
         "max_turns": env[turns_key],
         "phase": phase,
+        "timeout": timeout,
     }
 
 
@@ -34,6 +48,8 @@ def parse_claude_result(log_file: Path) -> tuple[str, str | None]:
         return "", None
 
     text = log_file.read_text()
+    if not text.strip():
+        return "", None
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
@@ -244,6 +260,18 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
     worktree_base = Path(env["FORGE_WORKTREE_DIR"])
     repo = Path(repo_path)
 
+    def _sigterm_handler(signum, frame):
+        proc = get_current_process()
+        if proc and proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+        sys.exit(1)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     if session_id:
         emit_thought(session_id, f"Investigating {issue_identifier}...", api_key)
 
@@ -265,9 +293,15 @@ def run(phase: str, issue_id: str, issue_identifier: str, repo_path: str,
         if session_id:
             emit_action(session_id, "Executing Claude", phase, api_key)
 
-        ret = run_claude(prompt, work_dir, **cfg,
-                         log_file=log_file,
-                         allow_write=extra_write)
+        try:
+            ret = run_claude(prompt, work_dir, **cfg,
+                             log_file=log_file,
+                             allow_write=extra_write)
+        except subprocess.TimeoutExpired:
+            mark_failed(issue_id, log_file,
+                        reason=f"Claude CLI timed out after {cfg['timeout']}s during {phase}.",
+                        session_id=session_id, api_key=api_key)
+            sys.exit(1)
 
         if ret.returncode != 0:
             mark_failed(issue_id, log_file, session_id=session_id, api_key=api_key)

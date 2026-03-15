@@ -167,6 +167,8 @@ mutation($issueId: String!, $body: String!) {
 
 
 def create_comment(issue_id: str, body: str, env=None):
+    if not body or not body.strip():
+        return
     if env is None:
         env = load_env()
     api_key = get_api_key(env)
