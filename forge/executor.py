@@ -8,12 +8,12 @@ from pathlib import Path
 
 from config import FORGE_ROOT, load_env, get_api_key
 from config.constants import (STATE_PENDING_APPROVAL, STATE_DONE, STATE_IN_REVIEW,
-                        STATE_FAILED, PHASE_PLANNING, PHASE_IMPLEMENTING,
+                        STATE_FAILED, STATE_TODO, TERMINAL_STATES,
+                        PHASE_PLANNING, PHASE_IMPLEMENTING,
                         PHASE_REVIEW, PHASE_PLAN_REVIEW)
 from lib.linear import (emit_thought, emit_action, emit_response, emit_error,
                         update_issue_state, create_comment, create_attachment,
-                        fetch_issue_detail, fetch_issue_comments,
-                        fetch_todo_state_id, fetch_sub_issues)
+                        fetch_issue_detail, fetch_issue_comments, fetch_sub_issues)
 from lib.git import (detect_default_branch, has_new_commits, worktree_add,
                   worktree_remove, merge, merge_abort, push, delete_branch,
                   pr_diff, fetch_pr_review_comments)
@@ -121,8 +121,6 @@ def prepare_prompt(phase, issue_id, issue_identifier, parent_issue_id, parent_id
     if phase == PHASE_PLANNING:
         issue_detail = fetch_issue_detail(issue_id)
         prompt = prompt.replace("{{ISSUE_DETAIL}}", json.dumps(issue_detail, indent=2, ensure_ascii=False))
-        todo_state_id = fetch_todo_state_id()
-        prompt = prompt.replace("{{TODO_STATE_ID}}", todo_state_id)
     elif phase == PHASE_REVIEW:
         issue_detail = fetch_issue_detail(issue_id)
         prompt = prompt.replace("{{ISSUE_DETAIL}}", json.dumps(issue_detail, indent=2, ensure_ascii=False))
@@ -145,9 +143,6 @@ def prepare_prompt(phase, issue_id, issue_identifier, parent_issue_id, parent_id
 
         comments = fetch_issue_comments(issue_id)
         prompt = prompt.replace("{{REVIEW_COMMENTS}}", json.dumps(comments, indent=2, ensure_ascii=False))
-
-        todo_state_id = fetch_todo_state_id()
-        prompt = prompt.replace("{{TODO_STATE_ID}}", todo_state_id)
 
     elif phase == PHASE_IMPLEMENTING:
         sub_detail = fetch_issue_detail(issue_id)
@@ -203,11 +198,18 @@ def post_execute(phase, issue_id, issue_identifier, parent_issue_id, parent_iden
         if not result.get("sub_issues"):
             mark_failed(issue_id, log_file, reason="Planning completed but no sub-issues were created.", session_id=session_id, api_key=api_key)
             sys.exit(1)
+        for sub in result["sub_issues"]:
+            if sub["state"] != STATE_TODO and sub["state"] not in TERMINAL_STATES:
+                update_issue_state(sub["id"], STATE_TODO)
         comment_body, raw_json = parse_claude_result(log_file)
         if comment_body:
             create_comment(issue_id, comment_body)
         update_issue_state(issue_id, STATE_PENDING_APPROVAL)
     elif phase == PHASE_PLAN_REVIEW:
+        result = fetch_sub_issues(issue_id)
+        for sub in result.get("sub_issues", []):
+            if sub["state"] != STATE_TODO and sub["state"] not in TERMINAL_STATES:
+                update_issue_state(sub["id"], STATE_TODO)
         comment_body, raw_json = parse_claude_result(log_file)
         if comment_body:
             create_comment(issue_id, comment_body)

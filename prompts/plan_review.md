@@ -43,7 +43,7 @@ Update the existing plan document using `update_document` to reflect the revised
 ### 4. Modify Sub-issues
 Make targeted changes to sub-issues:
 - **Modify**: Use `save_issue` to update title/description of existing sub-issues
-- **Add**: Use `save_issue` with parentId={{ISSUE_ID}} and stateId={{TODO_STATE_ID}} for new sub-issues
+- **Add**: Use `save_issue` with parentId={{ISSUE_ID}} for new sub-issues
 - **Remove**: Use `save_issue` to move unnecessary sub-issues to Cancelled state
 - Update `blockedBy` / `blocks` relations if dependencies change
 - Apply the same labels as the parent issue

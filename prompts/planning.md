@@ -42,7 +42,6 @@ Convert the Plan agent's output into a Linear document using `create_document`.
 Convert each work unit into a sub-issue using `save_issue`.
 
 - `parentId`: `{{ISSUE_ID}}`
-- `stateId`: `{{TODO_STATE_ID}}`
 - `description`: Copy the implementation approach from the Plan agent output as-is
 - Use actual newline characters (not literal `\n`)
 - Apply the same labels as the parent issue
