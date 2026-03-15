@@ -15,7 +15,8 @@ from config.constants import (STATE_PENDING_APPROVAL,
                         PHASE_SUBISSUE_CREATION)
 from lib.linear import (emit_thought, emit_action, emit_response, emit_error,
                         update_issue_state, create_comment, create_attachment,
-                        fetch_issue_detail, fetch_issue_comments, fetch_sub_issues)
+                        fetch_issue_detail, fetch_issue_comments, fetch_sub_issues,
+                        update_issue_labels)
 from lib.git import (detect_default_branch, has_new_commits, worktree_add,
                   worktree_remove, merge, merge_abort, push, delete_branch,
                   branch_exists, create_branch,
@@ -232,9 +233,13 @@ def post_execute(phase, issue_id, issue_identifier, parent_issue_id, parent_iden
         if not result.get("sub_issues"):
             mark_failed(issue_id, log_file, reason="Sub-issue creation completed but no sub-issues were created.", session_id=session_id, api_key=api_key)
             sys.exit(1)
+        parent_detail = fetch_issue_detail(issue_id)
+        repo_label_ids = [n["id"] for n in parent_detail.get("label_nodes", []) if n["name"].startswith("repo:")]
         for sub in result["sub_issues"]:
             if sub["state"] != STATE_TODO and sub["state"] not in END_STATES:
                 update_issue_state(sub["id"], STATE_TODO)
+            if repo_label_ids:
+                update_issue_labels(sub["id"], repo_label_ids)
         comment_body, raw_json = parse_claude_result(log_file)
         if comment_body:
             create_comment(issue_id, comment_body)

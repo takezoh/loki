@@ -31,7 +31,6 @@ For each work unit, use `save_issue` to create a sub-issue:
 - `parentId`: `{{ISSUE_ID}}`
 - `description`: Implementation approach from the plan (what, why, which files)
 - Use actual newline characters (not literal `\n`)
-- Apply the same labels as the parent issue
 - Set `blockedBy` / `blocks` relations if dependencies exist
 
 ### 3. Dependency Cycle Check
