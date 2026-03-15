@@ -295,6 +295,7 @@ query($issueId: String!) {
     description
     labels {
       nodes {
+        id
         name
         parent { name }
       }
@@ -341,13 +342,15 @@ def fetch_issue_detail(issue_id: str, env=None) -> dict:
     api_key = get_api_key(env)
     data = graphql(api_key, ISSUE_DETAIL_QUERY, {"issueId": issue_id})
     issue = data.get("data", {}).get("issue", {})
-    labels = parse_labels(issue.get("labels", {}).get("nodes", []))
+    label_nodes = issue.get("labels", {}).get("nodes", [])
+    labels = parse_labels(label_nodes)
     return {
         "id": issue.get("id", ""),
         "identifier": issue.get("identifier", ""),
         "title": issue.get("title", ""),
         "description": issue.get("description", ""),
         "labels": labels,
+        "label_nodes": label_nodes,
     }
 
 
@@ -410,6 +413,22 @@ def fetch_todo_state_id(team_id: str = "", env=None) -> str:
     data = graphql(api_key, WORKFLOW_STATES_QUERY, {"teamId": team_id})
     states = data.get("data", {}).get("workflowStates", {}).get("nodes", [])
     return next((s["id"] for s in states if s["name"] == STATE_TODO), "")
+
+
+UPDATE_ISSUE_LABELS_MUTATION = """
+mutation($issueId: String!, $labelIds: [String!]!) {
+  issueUpdate(id: $issueId, input: { labelIds: $labelIds }) {
+    issue { id }
+  }
+}
+"""
+
+
+def update_issue_labels(issue_id: str, label_ids: list[str], env=None):
+    if env is None:
+        env = load_env()
+    api_key = get_api_key(env)
+    graphql(api_key, UPDATE_ISSUE_LABELS_MUTATION, {"issueId": issue_id, "labelIds": label_ids})
 
 
 # --- Agent API (formerly agent_api.py) ---
