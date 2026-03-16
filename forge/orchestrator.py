@@ -35,6 +35,26 @@ def clean_stale_locks(lock_dir: Path, timeout_min: int):
             lock.unlink(missing_ok=True)
 
 
+def purge_stale_locks(lock_dir: Path):
+    for lock in lock_dir.glob("*.lock"):
+        if not _UUID_RE.match(lock.name):
+            continue
+        try:
+            lines = lock.read_text().splitlines()
+            pid = int(lines[1]) if len(lines) > 1 else 0
+        except (ValueError, OSError):
+            continue
+        if pid <= 0:
+            continue
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            lock.unlink(missing_ok=True)
+            log(f"Purged stale lock: {lock.name} (pid {pid} not found)")
+        except PermissionError:
+            pass
+
+
 def log(msg: str):
     print(f"[{datetime.now():%H:%M:%S}] {msg}")
 
@@ -267,6 +287,10 @@ def main(interval: int = 300):
     pid_file = Path(env["FORGE_PID_FILE"])
     pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(str(os.getpid()))
+
+    lock_dir = Path(env["FORGE_LOCK_DIR"])
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    purge_stale_locks(lock_dir)
 
     event = threading.Event()
 
