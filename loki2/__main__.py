@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import signal
 import sys
+import threading
 from pathlib import Path
 
 from loki2.clients.linear import LinearClient
@@ -15,11 +15,11 @@ from loki2.store.db import Database
 from loki2.workspace.manager import WorkspaceManager
 
 
-async def main():
+def main():
     parser = argparse.ArgumentParser(description="Loki v2 autonomous dev agent")
     parser.add_argument("--webhook", action="store_true", help="Enable webhook server")
-    parser.add_argument("--webhook-host", default=None, help="Webhook host (default: 0.0.0.0)")
-    parser.add_argument("--webhook-port", type=int, default=None, help="Webhook port (default: 3000)")
+    parser.add_argument("--webhook-host", default=None)
+    parser.add_argument("--webhook-port", type=int, default=None)
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -45,10 +45,10 @@ async def main():
     settings.log_dir.mkdir(parents=True, exist_ok=True)
 
     db = Database(settings.db_path)
-    await db.connect()
+    db.connect()
 
     linear = LinearClient(settings.linear_oauth_token.get_secret_value())
-    await linear.resolve_team(settings.linear_team)
+    linear.resolve_team(settings.linear_team)
     log.info("Connected to Linear team: %s", settings.linear_team)
 
     forge_root = Path(__file__).resolve().parent.parent
@@ -57,31 +57,30 @@ async def main():
 
     scheduler = Scheduler(settings, db, linear, workspace, prompt_builder)
 
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, scheduler.stop)
+    def _signal_handler(signum, frame):
+        log.info("Received signal %d, shutting down...", signum)
+        scheduler.stop()
 
-    webhook_server = None
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
     if args.webhook or settings.webhook:
         wh = settings.webhook or WebhookConfig()
         log.info("Starting webhook server on %s:%d", wh.host, wh.port)
-
         from loki2.webhook import create_app
-        import uvicorn
-
         app = create_app(settings, linear, scheduler)
-        config = uvicorn.Config(app, host=wh.host, port=wh.port, log_level="info")
-        webhook_server = uvicorn.Server(config)
-        asyncio.create_task(webhook_server.serve())
+        webhook_thread = threading.Thread(
+            target=app.run, kwargs={"host": wh.host, "port": wh.port},
+            daemon=True,
+        )
+        webhook_thread.start()
 
     try:
-        await scheduler.run()
+        scheduler.run()
     finally:
-        if webhook_server:
-            webhook_server.should_exit = True
-        await linear.close()
-        await db.close()
+        linear.close()
+        db.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

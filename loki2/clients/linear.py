@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import re
 import sys
+import time
 
 import httpx
 
@@ -13,13 +13,13 @@ class LinearClient:
     def __init__(self, api_key: str, team_id: str | None = None):
         self._api_key = api_key
         self._team_id = team_id
-        self._client = httpx.AsyncClient(
+        self._client = httpx.Client(
             headers={"Authorization": api_key},
             timeout=30.0,
         )
 
-    async def close(self):
-        await self._client.aclose()
+    def close(self):
+        self._client.close()
 
     @property
     def team_id(self) -> str:
@@ -27,28 +27,28 @@ class LinearClient:
             raise RuntimeError("team_id not resolved; call resolve_team() first")
         return self._team_id
 
-    async def graphql(self, query: str, variables: dict | None = None) -> dict:
+    def graphql(self, query: str, variables: dict | None = None) -> dict:
         max_retries = 3
         for attempt in range(max_retries + 1):
             try:
-                resp = await self._client.post(
+                resp = self._client.post(
                     GRAPHQL_URL,
                     json={"query": query, "variables": variables or {}},
                 )
             except httpx.HTTPError:
                 if attempt < max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    time.sleep(2 ** attempt)
                     continue
                 raise
             if resp.status_code >= 500 and attempt < max_retries:
-                await asyncio.sleep(2 ** attempt)
+                time.sleep(2 ** attempt)
                 continue
             resp.raise_for_status()
             return resp.json()
         raise RuntimeError("graphql retries exhausted")
 
-    async def resolve_team(self, team_name: str):
-        data = await self.graphql(
+    def resolve_team(self, team_name: str):
+        data = self.graphql(
             """query($name: String!) {
               teams(filter: { name: { eq: $name } }) { nodes { id name } }
             }""",
@@ -60,8 +60,8 @@ class LinearClient:
             raise SystemExit(1)
         self._team_id = nodes[0]["id"]
 
-    async def poll(self, status: str) -> list[dict]:
-        data = await self.graphql(
+    def poll(self, status: str) -> list[dict]:
+        data = self.graphql(
             """query($teamId: ID!, $stateName: String!) {
               issues(filter: {
                 team: { id: { eq: $teamId } }
@@ -83,8 +83,8 @@ class LinearClient:
             })
         return issues
 
-    async def fetch_issue_detail(self, issue_id: str) -> dict:
-        data = await self.graphql(
+    def fetch_issue_detail(self, issue_id: str) -> dict:
+        data = self.graphql(
             """query($issueId: String!) {
               issue(id: $issueId) {
                 id identifier title description
@@ -110,8 +110,8 @@ class LinearClient:
             "attachments": attachments,
         }
 
-    async def fetch_issue_comments(self, issue_id: str) -> list[dict]:
-        data = await self.graphql(
+    def fetch_issue_comments(self, issue_id: str) -> list[dict]:
+        data = self.graphql(
             """query($issueId: String!) {
               issue(id: $issueId) {
                 comments { nodes { body user { name } createdAt } }
@@ -125,8 +125,8 @@ class LinearClient:
             for c in comments
         ]
 
-    async def update_issue_state(self, issue_id: str, state_name: str):
-        data = await self.graphql(
+    def update_issue_state(self, issue_id: str, state_name: str):
+        data = self.graphql(
             """query($teamId: ID!) {
               workflowStates(filter: { team: { id: { eq: $teamId } } }) {
                 nodes { id name }
@@ -139,7 +139,7 @@ class LinearClient:
         if not state_id:
             print(f"State '{state_name}' not found", file=sys.stderr)
             return
-        await self.graphql(
+        self.graphql(
             """mutation($issueId: String!, $stateId: String!) {
               issueUpdate(id: $issueId, input: { stateId: $stateId }) {
                 issue { id state { name } }
@@ -148,10 +148,10 @@ class LinearClient:
             {"issueId": issue_id, "stateId": state_id},
         )
 
-    async def create_comment(self, issue_id: str, body: str):
+    def create_comment(self, issue_id: str, body: str):
         if not body or not body.strip():
             return
-        await self.graphql(
+        self.graphql(
             """mutation($issueId: String!, $body: String!) {
               commentCreate(input: { issueId: $issueId, body: $body }) {
                 comment { id }
@@ -160,8 +160,8 @@ class LinearClient:
             {"issueId": issue_id, "body": body},
         )
 
-    async def fetch_document(self, slug_id: str) -> dict | None:
-        data = await self.graphql(
+    def fetch_document(self, slug_id: str) -> dict | None:
+        data = self.graphql(
             """query($slugId: String!) {
               documents(filter: { slugId: { eq: $slugId } }, first: 1) {
                 nodes { id title content }
@@ -175,20 +175,20 @@ class LinearClient:
         doc = nodes[0]
         return {"id": doc["id"], "title": doc["title"], "content": doc["content"]}
 
-    async def resolve_attachment_documents(self, attachments: list[dict]) -> list[dict]:
+    def resolve_attachment_documents(self, attachments: list[dict]) -> list[dict]:
         doc_url_re = re.compile(r"https://linear\.app/[^/]+/document/.+-([0-9a-f]+)$")
         docs = []
         for att in attachments:
             m = doc_url_re.match(att.get("url", ""))
             if not m:
                 continue
-            doc = await self.fetch_document(m.group(1))
+            doc = self.fetch_document(m.group(1))
             if doc:
                 docs.append(doc)
         return docs
 
-    async def fetch_sub_issues(self, parent_id: str) -> dict:
-        data = await self.graphql(
+    def fetch_sub_issues(self, parent_id: str) -> dict:
+        data = self.graphql(
             """query($parentId: String!) {
               issue(id: $parentId) {
                 children {

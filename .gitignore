@@ -6,3 +6,6 @@ __pycache__/
 config/settings.json
 config/secrets.env
 config/repos.conf
+
+loki2.env
+repos.conf

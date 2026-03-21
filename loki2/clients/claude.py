@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -11,12 +11,12 @@ from pathlib import Path
 _POLL_INTERVAL = 10
 
 
-async def run(prompt: str, work_dir: Path, *,
-              model: str, max_turns: str, budget: str = "1.00",
-              log_file: Path | None = None,
-              capture_output: bool = False,
-              timeout: int | None = None,
-              idle_timeout: int | None = None) -> dict:
+def run(prompt: str, work_dir: Path, *,
+        model: str, max_turns: str, budget: str = "1.00",
+        log_file: Path | None = None,
+        capture_output: bool = False,
+        timeout: int | None = None,
+        idle_timeout: int | None = None) -> dict:
     output_format = "json" if capture_output else "stream-json"
     cmd = [
         "claude", "--print",
@@ -31,61 +31,53 @@ async def run(prompt: str, work_dir: Path, *,
         cmd.append("--verbose")
 
     if capture_output:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
             cwd=work_dir,
             start_new_session=True,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=prompt.encode()),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
+            stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
+        except subprocess.TimeoutExpired:
             _kill_process_group(proc.pid)
-            await proc.wait()
+            proc.wait()
             return {"returncode": -1, "error": f"timed out after {timeout}s", "stdout": "", "stderr": ""}
 
-        stdout_str = stdout.decode() if stdout else ""
         try:
-            result = json.loads(stdout_str)
+            result = json.loads(stdout)
         except (json.JSONDecodeError, ValueError):
-            result = {"result": stdout_str}
+            result = {"result": stdout}
 
         return {
             "returncode": proc.returncode,
             "result": result.get("result", ""),
-            "stdout": stdout_str,
-            "stderr": stderr.decode() if stderr else "",
+            "stdout": stdout,
+            "stderr": stderr,
             **{k: v for k, v in result.items() if k != "result"},
         }
     else:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        log_fh = open(log_file, "w")
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=log_fh,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=work_dir,
-            start_new_session=True,
-        )
-        proc.stdin.write(prompt.encode())
-        await proc.stdin.drain()
-        proc.stdin.close()
+        with open(log_file, "w") as log_fh:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=log_fh, stderr=subprocess.STDOUT,
+                text=True,
+                cwd=work_dir,
+                start_new_session=True,
+            )
+            proc.stdin.write(prompt)
+            proc.stdin.close()
 
-        try:
-            await _wait_with_idle_check(proc, log_fh, timeout, idle_timeout)
-        except asyncio.TimeoutError:
-            _kill_process_group(proc.pid)
-            await proc.wait()
-            log_fh.close()
-            return {"returncode": -1, "error": "timed out", "log_file": str(log_file)}
-        finally:
-            log_fh.close()
+            try:
+                _wait_with_idle_check(proc, log_fh, timeout, idle_timeout)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(proc.pid)
+                proc.wait()
+                return {"returncode": -1, "error": "timed out", "log_file": str(log_file)}
 
         result = _parse_log(log_file)
         result["returncode"] = proc.returncode
@@ -93,9 +85,9 @@ async def run(prompt: str, work_dir: Path, *,
         return result
 
 
-async def _wait_with_idle_check(proc, log_fh, timeout, idle_timeout):
+def _wait_with_idle_check(proc, log_fh, timeout, idle_timeout):
     if not idle_timeout:
-        await asyncio.wait_for(proc.wait(), timeout=timeout)
+        proc.wait(timeout=timeout)
         return
 
     now = time.monotonic()
@@ -103,26 +95,19 @@ async def _wait_with_idle_check(proc, log_fh, timeout, idle_timeout):
     idle_deadline = now + idle_timeout
     last_size = 0
 
-    while proc.returncode is None:
-        await asyncio.sleep(_POLL_INTERVAL)
+    while proc.poll() is None:
+        time.sleep(_POLL_INTERVAL)
         now = time.monotonic()
 
         if deadline and now >= deadline:
-            raise asyncio.TimeoutError()
+            raise subprocess.TimeoutExpired(proc.args, timeout)
 
         cur_size = os.fstat(log_fh.fileno()).st_size
         if cur_size != last_size:
             last_size = cur_size
             idle_deadline = now + idle_timeout
         elif now >= idle_deadline:
-            raise asyncio.TimeoutError()
-
-        try:
-            proc._transport.get_pid()
-        except (ProcessLookupError, AttributeError):
-            break
-        if proc.returncode is not None:
-            break
+            raise subprocess.TimeoutExpired(proc.args, idle_timeout)
 
 
 def _kill_process_group(pid: int):
@@ -130,7 +115,7 @@ def _kill_process_group(pid: int):
         os.killpg(pid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
         return
-    time.sleep(2)
+    time.sleep(5)
     try:
         os.killpg(pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -158,6 +143,34 @@ def _parse_log(log_file: Path) -> dict:
     return {"result": "\n".join(lines[-20:]) if lines else ""}
 
 
+_CODE_EDITING_PHASES = {"implementing", "review"}
+
+_ALLOWED_DOMAINS = [
+    "api.linear.app",
+    "github.com",
+    "*.github.com",
+    "*.githubusercontent.com",
+    "api.anthropic.com",
+    "registry.npmjs.org",
+    "*.npmjs.org",
+    "proxy.golang.org",
+    "sum.golang.org",
+    "storage.googleapis.com",
+    "pypi.org",
+    "files.pythonhosted.org",
+]
+
+_BASE_ALLOW_TOOLS = ["Read", "Glob", "Grep", "Bash", "mcp__linear-server__*"]
+_EDIT_ALLOW_TOOLS = _BASE_ALLOW_TOOLS + ["Edit", "Write"]
+
+
+def _normalize_path(p: str | Path) -> str:
+    s = str(p)
+    if s.startswith("/"):
+        return s
+    return "/" + s
+
+
 def setup_settings(work_dir: Path, *, phase: str = "",
                    log_dir: Path | None = None,
                    extra_write_paths: list[str] | None = None,
@@ -165,24 +178,38 @@ def setup_settings(work_dir: Path, *, phase: str = "",
                    denied_tools: list[str] | None = None):
     from loki2.core.state import PHASE_DENIED_TOOLS
 
-    settings: dict = {}
+    write_paths = [_normalize_path(work_dir), "/tmp"]
+    if log_dir:
+        write_paths.append(_normalize_path(log_dir))
+    for p in (extra_write_paths or []):
+        write_paths.append(_normalize_path(p))
 
-    # Sandbox filesystem
-    if log_dir or extra_write_paths:
-        fs: dict = {}
-        write_paths: list[str] = []
-        if log_dir:
-            write_paths.append("/" + str(log_dir))
-        for p in (extra_write_paths or []):
-            write_paths.append("/" + str(p) + "/")
-        if write_paths:
-            fs["allowWrite"] = write_paths
-            settings["sandbox"] = {"filesystem": fs}
+    sandbox = {
+        "enabled": True,
+        "autoAllowBashIfSandboxed": True,
+        "filesystem": {
+            "allowWrite": write_paths,
+            "denyRead": ["/home", "/root", "/etc", "/mnt/c"],
+            "allowRead": ["~/.claude", "~/.local"],
+        },
+        "network": {
+            "allowManagedDomainsOnly": True,
+            "allowedDomains": _ALLOWED_DOMAINS,
+        },
+    }
 
-    # Permissions
-    allow = allowed_tools or ["mcp__linear-server__*"]
+    if allowed_tools:
+        allow = allowed_tools
+    elif phase in _CODE_EDITING_PHASES:
+        allow = list(_EDIT_ALLOW_TOOLS)
+    else:
+        allow = list(_BASE_ALLOW_TOOLS)
     deny = denied_tools if denied_tools is not None else PHASE_DENIED_TOOLS.get(phase, [])
-    settings["permissions"] = {"allow": allow, "deny": deny}
+
+    settings = {
+        "sandbox": sandbox,
+        "permissions": {"allow": allow, "deny": deny},
+    }
 
     claude_dir = work_dir / ".claude"
     claude_dir.mkdir(exist_ok=True)
